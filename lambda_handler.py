@@ -6,10 +6,12 @@ import boto3
 
 
 def lambda_handler(event, context):
+    """Start of the lambda function shimmy. """
     def read_config():
-        with open('settings.config', 'r') as f:
+        """This is where I read in the config file."""
+        with open('settings.config', 'r') as file_name:
             try:
-                settings = yaml.load(f)
+                settings = yaml.load(file_name)
             except yaml.YAMLError as exc:
                 print(exc)
         return settings
@@ -17,6 +19,7 @@ def lambda_handler(event, context):
     # This is defined so we can instantiate credentials to the account we want to do things to.
 
     def cross_role_session(role_arn, region):
+        """ This instantiates a session with the provided cross account role. """
         # This is here so we can avoid auth errors.
         start_session = boto3.Session()
         role_arn = role_arn
@@ -40,10 +43,12 @@ def lambda_handler(event, context):
     # TODO:  Have lambda function pull settings from S3 instead of being inside of lambda function
 
     def push_parameter(accountid, session, parameter_name, parameter_type, parameter_value, key):
+        """push_parameter() takes the value of local parameter in parameter store and
+        pushes it to remote AWS Account. """
         client = session.client('ssm')
         if key:
             response = client.put_parameter(
-                Name=parameter,
+                Name=parameter_name,
                 Description='Parameter pushed from %s' % accountid,
                 Value=parameter_value,
                 Type=parameter_type,
@@ -52,7 +57,7 @@ def lambda_handler(event, context):
             )
         else:
             response = client.put_parameter(
-                Name=parameter,
+                Name=parameter_name,
                 Description='Parameter pushed from %s' % accountid,
                 Value=parameter_value,
                 Type=parameter_type,
@@ -63,6 +68,8 @@ def lambda_handler(event, context):
     # parameter to push to a new account
 
     def get_parameter(parameter_name, parameter_type, region):
+        """get_parameter() gets the value of the parameter, decrypts (if necessary)
+        and feeds value to put_parameter(). """
         ssm_client = boto3.client('ssm', region_name=region)
         if parameter_type == 'SecureString':
             try:
@@ -70,17 +77,16 @@ def lambda_handler(event, context):
                     Name=parameter_name,
                     WithDecryption=True
                 )
-            except Exception as e:
+            except ValueError:
                 return "Parameter not found."
-                sys.exit(1)
         else:
             try:
                 get_parameter = ssm_client.get_parameter(
                     Name=parameter_name,
                     WithDecryption=False
                 )
-            except Exception as e:
-                return "parameter name not found: %s" % e
+            except ValueError:
+                return "parameter name not found."
         return get_parameter['Parameter']['Value']
 
     settings = read_config()
